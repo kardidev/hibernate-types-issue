@@ -1,6 +1,7 @@
 package com.kardi.test.multidata;
 
 import com.kardi.test.multidata.entities.ProblemTypeEntity;
+import com.kardi.test.multidata.entities.ProblemTypeEntity_;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -9,7 +10,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityTransaction;
-import javax.persistence.Query;
+import javax.persistence.TypedQuery;
 import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Expression;
@@ -76,37 +77,52 @@ public abstract class TestBase {
     }
 
     @Test
-    public void testDateOperations() {
-
-        long alertEntityIndex = prepareDateOperationsEntities();
+    public void testDateOperationsUsingJPQL() {
+        prepareDateOperationsEntities();
         Calendar calendar = Calendar.getInstance();
         calendar.set(2000, Calendar.MARCH, 2);
 
         // JPQL over hibernate (HQL)
-        Query query = entityManager.createQuery("from ProblemTypeEntity e where addmonths(e.controlDate, e.months) > :plimit");
+        TypedQuery<ProblemTypeEntity> query = entityManager.createQuery(
+                "from ProblemTypeEntity e where addmonths(e.controlDate, e.months) > :plimit",
+                ProblemTypeEntity.class);
         query.setParameter("plimit", calendar.getTime());
-        List result = query.getResultList();
+        List<ProblemTypeEntity> result = query.getResultList();
 
-        assert(result != null);
-        assert(result.size() == 1);
-        assert(((ProblemTypeEntity)result.get(0)).getId() == alertEntityIndex);
+        assert (result != null);
+        assert (result.size() == 1);
+        assert (result.get(0).getMonths() == 2);
+    }
+
+    @Test
+    public void testDateOperationsUsingCriteria() {
+        prepareDateOperationsEntities();
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(2000, Calendar.MARCH, 2);
 
         // JPA criteria
         CriteriaBuilder cb = entityManager.getCriteriaBuilder();
         CriteriaQuery<ProblemTypeEntity> cQuery = cb.createQuery(ProblemTypeEntity.class);
-        Root root = cQuery.from(ProblemTypeEntity.class);
-        Expression<Date> function = cb.function("addmonths", Date.class, root.get("controlDate"), root.get("months"));
+        Root<ProblemTypeEntity> root = cQuery.from(ProblemTypeEntity.class);
+        Expression<Date> function = cb.function("addmonths", Date.class,
+                root.get(ProblemTypeEntity_.controlDate), root.get(ProblemTypeEntity_.months));
         cQuery.where(cb.greaterThan(function, calendar.getTime()));
 
-        result = entityManager.createQuery(cQuery).getResultList();
+        List<ProblemTypeEntity> result = entityManager.createQuery(cQuery).getResultList();
 
-        assert(result != null);
-        assert(result.size() == 1);
-        assert(((ProblemTypeEntity)result.get(0)).getId() == alertEntityIndex);
+        assert (result != null);
+        assert (result.size() == 1);
+        assert (result.get(0).getMonths() == 2);
     }
 
     @After
     public void tearDown() throws Exception {
+
+        EntityTransaction tx = entityManager.getTransaction();
+        tx.begin();
+        entityManager.createQuery("delete from ProblemTypeEntity pte").executeUpdate();
+        tx.commit();
+
         if (entityManager != null) {
             entityManager.close();
         }
@@ -117,14 +133,14 @@ public abstract class TestBase {
     }
 
     private void testData(long id,
-                            String text,
-                            String textSmall,
-                            String textMedium,
-                            String textLarge,
-                            byte[] binary,
-                            byte[] binarySmall,
-                            byte[] binaryMedium,
-                            byte[] binaryLarge) {
+                          String text,
+                          String textSmall,
+                          String textMedium,
+                          String textLarge,
+                          byte[] binary,
+                          byte[] binarySmall,
+                          byte[] binaryMedium,
+                          byte[] binaryLarge) {
 
         ProblemTypeEntity problemTypeEntity = new ProblemTypeEntity();
         problemTypeEntity.setId(id);
@@ -190,7 +206,7 @@ public abstract class TestBase {
         }
     }
 
-    private long prepareDateOperationsEntities() {
+    private void prepareDateOperationsEntities() {
         Calendar calendar = Calendar.getInstance();
         calendar.set(2000, Calendar.FEBRUARY, 1);
 
@@ -203,15 +219,13 @@ public abstract class TestBase {
         entity1.setMonths(1);
         entityManager.persist(entity1);
 
-        long alertEntityIndex = nextIndex.incrementAndGet();
         ProblemTypeEntity entity2 = new ProblemTypeEntity();
-        entity2.setId(alertEntityIndex);
+        entity2.setId(nextIndex.incrementAndGet());
         entity2.setControlDate(calendar.getTime());
         entity2.setMonths(2);
         entityManager.persist(entity2);
 
         tx.commit();
-        return alertEntityIndex;
     }
 
     /**
